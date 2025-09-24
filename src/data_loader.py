@@ -59,7 +59,6 @@ def _generate_sequence(segments: List[list], look_back: int, horizon_prediction:
             sequences.extend(seq)
 
     sequences = np.array(sequences, dtype=np.float32)
-
     # split by columns to features and targets (for classification and regression)
     X = sequences[:, :look_back]
     y_reg = sequences[:, look_back:look_back+horizon_prediction]
@@ -138,11 +137,11 @@ def load_OhioT1DM(path: str, look_back: int = 30, horizon_prediction: int = 6, m
     # Retrieve XML file paths
     xml_file_paths = glob.glob(os.path.join(path, "OhioT1DM", "**", "**.xml"), recursive=True)
     data = {"train": [], "test": []}
-
+    root_path = path
     # Parse XML files
     for path in xml_file_paths:
         sequence = {}
-        split = path.split("\\")[3]
+        split = path.split("\\")[1 + len(root_path.split("\\"))]
         tree = ET.parse(path)
         root = tree.getroot()
 
