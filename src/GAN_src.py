@@ -66,6 +66,13 @@ class Generator1D(nn.Module):
         x = self.fc(z)  # (B, base_channels * L/16)
         x = x.view(z.size(0), -1, self.signal_length // 16)  # (B, C, L/16)
         return self.net(x)  # (B, 1, L)
+    
+    def sample(self, num_samples, device): 
+        with torch.no_grad(): 
+            z = torch.rand(num_samples, self.z_dim, device=device) 
+            samples = self(z) 
+            
+        return samples 
 
 
 # -----------------------
@@ -272,3 +279,27 @@ class DCGANTrainer:
             mlflow.log_artifact("../models/dcgan_D.pt")
 
             return history
+        
+        
+def load_gan(model_class, checkpoint_path, device="cpu", **model_kwargs):
+    """
+    Load GAN model weights from a checkpoint.
+
+    Args:
+        model_class: The GAN class (e.g., GAN)
+        checkpoint_path (str): Path to .pth file with state_dict
+        device (str): "cpu" or "cuda"
+        model_kwargs: Extra kwargs to initialize the model (latent_dim, hidden_dims, etc.)
+
+    Returns:
+        model (nn.Module): GAN with loaded weights
+    """
+    # Initialize the model with the same architecture as when saved
+    model = model_class(**model_kwargs).to(device)
+
+    # Load checkpoint
+    state_dict = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(state_dict)
+
+    model.eval()
+    return model
