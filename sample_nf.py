@@ -1,24 +1,22 @@
-from src.DDPM_src import Unet, load_ddpm 
+from src.NF_src import NormalizingFlow, load_nf 
 from torch.cuda import is_available
 from torch import concat, save
+from tqdm import tqdm
 
 device = "cuda" if is_available() else "cpu"
 
-model = load_ddpm(Unet, "models\\best_nf.pt", device,     
-    dim=8,
-    channels=1,
-    dim_mults=(1, 2, 4, 8,))
+model = load_nf(NormalizingFlow, "models\\best_nf.pt", device, num_layers = 16, dim = 128, hidden_dim = 256)
 
-def sample(model:Unet, device, num_samples:int, batch_size: int = 1024): 
+def sample(model:NormalizingFlow, device, num_samples:int, batch_size: int = 1024): 
     
     num_batches = num_samples // batch_size 
     remaining = num_samples % batch_size 
     
-    samples = model.sample(remaining, device) 
+    samples = model.sample(remaining, 128, device=device) 
     
-    for _ in range(num_batches): 
+    for _ in tqdm(range(num_batches)): 
         
-        samples = concat([samples, model.sample(batch_size, device)]) 
+        samples = concat([samples, model.sample(batch_size, 128, device=device)]) 
         
     return samples 
 

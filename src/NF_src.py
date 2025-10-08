@@ -120,6 +120,7 @@ class NormalizingFlow(nn.Module):
         return z, nll.squeeze() 
 
     def sample(self, num_samples, seq_len, device:str = "cpu"):
+        self.eval()
         z = self.prior.sample((num_samples,seq_len))
         h = z.to(device=device)
         for layer in reversed(self.layers):
