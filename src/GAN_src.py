@@ -36,6 +36,9 @@ set_seed(123)
 # -----------------------
 # Generator
 # -----------------------
+# -----------------------
+# Generator
+# -----------------------
 class Generator1D(nn.Module):
     def __init__(self, z_dim=16, signal_length=128, base_channels=64):
         super().__init__()
@@ -64,12 +67,12 @@ class Generator1D(nn.Module):
 
     def forward(self, z):
         x = self.fc(z)  # (B, base_channels * L/16)
-        x = x.view(z.size(0), -1, self.signal_length // 16)  # (B, C, L/16)
+        x = x.view(x.size(0), -1, self.signal_length // 16)  # (B, C, L/16)
         return self.net(x)  # (B, 1, L)
-    
+
     def sample(self, num_samples, device): 
         with torch.no_grad(): 
-            z = torch.rand(num_samples, self.z_dim, device=device) 
+            z = torch.randn(num_samples, self.z_dim, device=device) 
             samples = self(z) 
             
         return samples 
@@ -100,7 +103,6 @@ class Discriminator1D(nn.Module):
 
             nn.Flatten(),
             nn.Linear(base_channels * (signal_length // 16), 1), 
-            nn.Tanh()
         )
 
     def forward(self, x):
@@ -172,7 +174,7 @@ class DCGANTrainer:
         self.scaler = GradScaler('cuda', enabled=fp16)
         self.experiment_name = experiment_name
 
-    def _train_step(self, real_data, z_dim):
+    def _train_step(self, real_data, z_dim, epoch:int):
         real_data = real_data.to(self.device).unsqueeze(1)  # (B,1,L)
         batch_size = real_data.size(0)
 
@@ -181,27 +183,33 @@ class DCGANTrainer:
         fake_labels = torch.zeros(batch_size, 1, device=self.device)
 
         # =============== Train Discriminator ===============
-        z = torch.randn(batch_size, z_dim, device=self.device)
-        fake_data = self.G(z)
+
 
         self.d_optimizer.zero_grad()
-        with autocast(device_type="cuda", dtype=torch.float16, enabled=self.fp16):
-            real_pred = self.D(real_data)
-            fake_pred = self.D(fake_data.detach())
+        if epoch  % self.g_d_train_ratio == 0 :
+            z = torch.randn(batch_size, z_dim, device=self.device)
+            fake_data = self.G(z)
+            with autocast(device_type="cuda", dtype=torch.float16, enabled=self.fp16):
+                real_pred = self.D(real_data)
+                fake_pred = self.D(fake_data.detach())
 
-            d_loss_real = F.binary_cross_entropy_with_logits(real_pred, real_labels)
-            d_loss_fake = F.binary_cross_entropy_with_logits(fake_pred, fake_labels)
-            d_loss = d_loss_real + d_loss_fake
+                d_loss_real = F.binary_cross_entropy_with_logits(real_pred, real_labels)
+                d_loss_fake = F.binary_cross_entropy_with_logits(fake_pred, fake_labels)
+                d_loss = d_loss_real + d_loss_fake
 
-        if self.fp16:
-            self.scaler.scale(d_loss).backward()
-            self.scaler.step(self.d_optimizer)
-        else:
-            d_loss.backward()
-            self.d_optimizer.step()
+            if self.fp16:
+                self.scaler.scale(d_loss).backward()
+                self.scaler.step(self.d_optimizer)
+            else:
+                d_loss.backward()
+                self.d_optimizer.step()
+        else: 
+            d_loss = torch.tensor([0])
 
         # =============== Train Generator ===============
         self.g_optimizer.zero_grad()
+        z = torch.randn(batch_size, z_dim, device=self.device)
+        fake_data = self.G(z)
         with autocast(device_type="cuda", dtype=torch.float16, enabled=self.fp16):
             fake_pred = self.D(fake_data)
             g_loss = F.binary_cross_entropy_with_logits(fake_pred, real_labels)
@@ -216,9 +224,10 @@ class DCGANTrainer:
 
         return d_loss.item(), g_loss.item(), fake_data.detach().cpu()
 
-    def _log_samples(self, samples, epoch, n_samples=8):
+    def _log_samples(self, samples, epoch, normalized:bool, n_samples=8):
         samples = samples[:n_samples].squeeze(1)
-        samples = self.denormalize(samples).numpy()
+        if normalized:
+            samples = self.denormalize(samples).numpy()
         fig, axes = plt.subplots(nrows=n_samples, ncols=1, figsize=(6, n_samples*1.5))
         for i in range(n_samples):
             axes[i].plot(samples[i], color="blue")
@@ -237,12 +246,12 @@ class DCGANTrainer:
     def denormalize(self, X_train):
         return (X_train + 1) / 2 * (self.x_max - self.x_min) + self.x_min
     
-    def fit(self, X_train, z_dim=16, epochs=20, normalize:bool = True):
+    def fit(self, X_train, z_dim=16, epochs=20, normalize:bool = True, g_d_train_ratio:int = 4):
         train_loader = DataLoader(CustomDataset(X_train, None, self.device),
                                   sampler=RandomSampler(X_train),
                                   batch_size=self.batch_size,
                                   drop_last=True, )
-                                  
+        self.g_d_train_ratio = g_d_train_ratio                         
         if normalize: 
             X_train = self.normalize(X_train)
         mlflow.set_experiment(self.experiment_name)
@@ -256,21 +265,22 @@ class DCGANTrainer:
             history = {"d_loss": [], "g_loss": []}
 
             for epoch in range(1, epochs+1):
-                d_losses, g_losses = [], []
+                self.d_losses, self.g_losses = [], []
                 for X in tqdm.tqdm(train_loader, desc=f"Epoch {epoch} [Train]"):
-                    d_loss, g_loss, fake_samples = self._train_step(X, z_dim)
-                    d_losses.append(d_loss)
-                    g_losses.append(g_loss)
+                    d_loss, g_loss, fake_samples = self._train_step(X, z_dim, epoch)
+                    self.d_losses.append(d_loss)
+                    self.g_losses.append(g_loss)
 
-                avg_d = np.mean(d_losses)
-                avg_g = np.mean(g_losses)
-                history["d_loss"].append(avg_d)
+                if epoch  % self.g_d_train_ratio == 0 :
+                    avg_d = np.mean(self.d_losses)
+                    history["d_loss"].append(avg_d)
+                    mlflow.log_metric("d_loss", avg_d, step=epoch)
+                
+                avg_g = np.mean(self.g_losses)
                 history["g_loss"].append(avg_g)
-
-                mlflow.log_metric("d_loss", avg_d, step=epoch)
                 mlflow.log_metric("g_loss", avg_g, step=epoch)
 
-                self._log_samples(fake_samples, epoch)
+                self._log_samples(fake_samples, epoch, normalized=normalize)
 
                 # Save checkpoints
             torch.save(self.G.state_dict(), f"../models/dcgan_G.pt")
@@ -278,9 +288,7 @@ class DCGANTrainer:
             torch.save(self.D.state_dict(), f"../models/dcgan_D.pt")
             mlflow.log_artifact("../models/dcgan_D.pt")
 
-            return history
-        
-        
+            return history  
 def load_gan(model_class, checkpoint_path, device="cpu", **model_kwargs):
     """
     Load GAN model weights from a checkpoint.
