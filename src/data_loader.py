@@ -130,6 +130,87 @@ def load_dataset(config: dict, base_path_data: str, dataset_name: str, look_back
     return _generate_sequence(segments, look_back, horizon_prediction, classes, val_size, test_size, index = index)
 
 
+def load_OhioT1DM_patient_split(path: str, look_back: int = 30, horizon_prediction: int = 6, max_timestamps: int = 2, train: bool = True, classes: list = [180, 60], val_size: float = 0.1, test_size: float = 0.3, return_segments:bool = False, index:int = None, split:bool = True) -> Tuple:
+    """
+    Load OhioT1DM dataset (from XML files) and preprocess it into sequences
+    """
+    # Retrieve XML file paths
+    xml_file_paths = glob.glob(os.path.join(path, "OhioT1DM", "**", "**.xml"), recursive=True)
+    data = {"train": [], "test": []}
+    root_path = path
+    # Parse XML files
+    for path in xml_file_paths:
+        sequence = {}
+        split = path.split("\\")[1 + len(root_path.split("\\"))]
+        tree = ET.parse(path)
+        root = tree.getroot()
+
+        # Extract patient attributes
+        patient_id = root.attrib.get('id')
+        weight = root.attrib.get('weight')
+        insulin_type = root.attrib.get('insulin_type')
+
+        # Write glucose events
+        for event in root.find('glucose_level'):
+            timestamp = event.attrib.get('ts')
+            value = event.attrib.get('value')
+            sequence[timestamp] = value
+
+        data[split].append({"patient_id": patient_id, "weight": weight, "insulin_type": insulin_type, "sequence": sequence})
+
+    # Create DataFrames
+    DF = []
+    for _, split_data in data.items():
+        for patient_data in split_data:
+            patient_id = patient_data["patient_id"]
+            weight = patient_data["weight"]
+            insulin_type = patient_data["insulin_type"]
+            sequence = patient_data["sequence"]
+            timestamps = list(sequence.keys())
+            values = [float(value) for value in sequence.values()]
+            num_rows = len(values)
+            df = {
+                "id": [np.int32(patient_id)] * num_rows,
+                "weight": [np.int32(weight)] * num_rows,
+                "insulin_type": [insulin_type] * num_rows,
+                "timestamp": timestamps,
+                "value": np.float32(values)
+            }
+            df = pd.DataFrame(df)
+            df["timestamp"] = pd.to_datetime(df["timestamp"], format="%d-%m-%Y %H:%M:%S")
+            DF.append(df)
+
+
+    delta_time = np.int64(5) * np.int64(60000000000)
+    segments = []
+    sequences  = []
+
+    for df in DF:
+        timestamps = df["timestamp"]# .values
+        values = df["value"].values
+        segments.append(process_segments(timestamps, values, delta_time, max_timestamps))
+
+    if return_segments:
+        return segments
+    
+    for patient_segments in segments: 
+        patient_sequence = _generate_sequence(patient_segments, look_back, horizon_prediction, classes, val_size, test_size, index=index, train=train, split=split) 
+        sequences.append(patient_sequence)
+        
+    final_data = []
+        
+    n = len(patient_sequence) 
+    
+    for i in range(n): 
+        temp = []
+        for patient_sequence in sequences: 
+            temp.append(patient_sequence[i])
+            
+        final_data.append(np.concatenate(temp))
+    
+    return final_data
+
+
 def load_OhioT1DM(path: str, look_back: int = 30, horizon_prediction: int = 6, max_timestamps: int = 2, train: bool = True, classes: list = [180, 60], val_size: float = 0.2, test_size: float = 0.3, return_segments:bool = False, index:int = None, split:bool = True) -> Tuple:
     """
     Load OhioT1DM dataset (from XML files) and preprocess it into sequences
