@@ -4,7 +4,7 @@ from torch import concat, save
 
 device = "cuda" if is_available() else "cpu"
 
-model = load_vae(VAE, "models\\best_vae.pt", device, input_shape=(1, 128), latent_dim=16,)
+model = load_vae(VAE, "models\\best_vae.pt", device, input_shape=(1, 128), latent_dim=24,)
 
 def sample(model:VAE, device, num_samples:int, batch_size: int = 1024): 
     
