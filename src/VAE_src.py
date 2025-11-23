@@ -185,14 +185,13 @@ class VAE(nn.Module):
         
         with torch.no_grad(): 
             
-            z = torch.rand(num_samples, self.latent_dim, device=device) 
+            z = torch.randn(num_samples, self.latent_dim, device=device) 
             
             samples = self.decode(z) 
             
         return samples 
         
-# normalize per batch
-def vae_loss(x, recon, mu, log_var):
+def vae_loss(x, recon, mu, log_var, beta:int = 1):
     # Flatten to [B, -1] if needed
     recon_loss = torch.nn.functional.mse_loss(
         recon, x, reduction='sum'
@@ -201,13 +200,8 @@ def vae_loss(x, recon, mu, log_var):
     kl_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp()) 
     kl_loss /= x.size(0)  # normalize by batch
 
-    return recon_loss + kl_loss, recon_loss, kl_loss 
+    return recon_loss + beta * kl_loss, recon_loss, kl_loss
 
-# with mean
-def vae_loss(recon_x, x, mu, log_var):
-    recon_loss = nn.MSELoss()(recon_x, x)
-    kl = -0.5 * torch.mean(1 + log_var - mu.pow(2) - log_var.exp())
-    return recon_loss + kl, recon_loss, kl
 
 
 #--------------
@@ -239,7 +233,7 @@ class CustomDataset(Dataset):
 # VAE Trainer
 # -----------------------
 class VAETrainer:
-    def __init__(self, model: VAE, optimizer, device="cpu", batch_size=32,
+    def __init__(self, model: VAE, optimizer, beta:int, device="cpu", batch_size=32,
                  fp16=False, experiment_name="VAE-Experiment"):
         self.model = model.to(device)
         self.optimizer = optimizer
@@ -248,6 +242,7 @@ class VAETrainer:
         self.fp16 = fp16
         self.scaler = GradScaler('cuda', enabled=fp16)
         self.experiment_name = experiment_name
+        self.beta = beta
 
     def _single_pass(self, X, train=True):
         self.optimizer.zero_grad()
@@ -255,7 +250,7 @@ class VAETrainer:
 
         with autocast(device_type='cuda', dtype=torch.float16):
             recon, mu, log_var = self.model(X)
-            loss, recon_loss, kl = vae_loss(recon, X, mu, log_var)
+            loss, recon_loss, kl = vae_loss(recon, X, mu, log_var, self.beta)
 
         if train:
             if self.fp16:
@@ -286,11 +281,13 @@ class VAETrainer:
         fig, axes = plt.subplots(nrows=max_items, ncols=2, figsize=(6, max_items*1.5))
         for i in range(max_items):
             axes[i, 0].plot(X[i], color="black")
-            axes[i, 0].set_title("Original")
+            if i == 0:
+                axes[i, 0].set_title("Original")
             #axes[i, 0].axis("off")
 
             axes[i, 1].plot(recon[i], color="red")
-            axes[i, 1].set_title("Reconstruction")
+            if i == 0:
+                axes[i, 1].set_title("Reconstruction")
             #axes[i, 1].axis("off")
 
         plt.tight_layout()
@@ -319,7 +316,7 @@ class VAETrainer:
         mlflow.log_artifact(fname) 
         os.remove(fname)
 
-    def fit(self, X_train, X_val=None, epochs=20, early_stopping=5):
+    def fit(self, X_train, X_val=None, epochs=20, early_stopping=5, early_stoping_criteria:str="loss"):
         # Prepare datasets
         train_loader = DataLoader(CustomDataset(X_train, None, self.device),
                                   sampler=RandomSampler(X_train),
@@ -341,6 +338,7 @@ class VAETrainer:
                 "latent_dim": self.model.latent_dim,
                 "hidden_dims": self.model.hidden_dims,
                 "kernel_sizes": self.model.kernel_sizes,
+                "beta": self.beta,
                 "batch_size": self.batch_size,
                 "epochs": epochs
             })
@@ -353,35 +351,59 @@ class VAETrainer:
                 # ---- Train ----
                 self.model.train()
                 train_losses = []
+                recon_losses = []
+                kl_losses = []
                 for X in tqdm.tqdm(train_loader, desc=f"Epoch {epoch} [Train]"):
-                    loss, _, _, _ = self._single_pass(X, train=True)
+                    loss, _, recon_loss, kl_loss = self._single_pass(X, train=True)
                     train_losses.append(loss)
+                    recon_losses.append(recon_loss)
+                    kl_losses.append(kl_loss)
 
-                avg_train_loss = sum(train_losses)/len(train_losses)
+                avg_train_loss = np.mean(train_losses)
+                avg_train_recon_loss = np.mean(recon_losses)
+                avg_train_kl_loss = np.mean(kl_losses)
                 history["train_loss"].append(avg_train_loss)
                 mlflow.log_metric("train_loss", avg_train_loss, step=epoch)
+                mlflow.log_metric("train_recon_loss", avg_train_recon_loss, step=epoch)
+                mlflow.log_metric("train_kl_loss", avg_train_kl_loss, step=epoch)
 
                 # ---- Validation ----
                 avg_val_loss = None
                 if val_loader is not None:
                     self.model.eval()
                     val_losses = []
+                    recon_losses = []
+                    kl_losses = []
                     with torch.no_grad():
                         for X in tqdm.tqdm(val_loader, desc=f"Epoch {epoch} [Val]"):
-                            loss, recon, _, _ = self._single_pass(X, train=False)
+                            loss, recon, recon_loss, kl_loss = self._single_pass(X, train=False)
                             val_losses.append(loss)
+                            recon_losses.append(recon_loss)
+                            kl_losses.append(kl_loss)
 
                         avg_val_loss = np.mean(val_losses)
+                        avg_recon_loss = np.mean(recon_losses)
+                        avg_kl_loss = np.mean(kl_losses)
                         history["val_loss"].append(avg_val_loss)
                         mlflow.log_metric("val_loss", avg_val_loss, step=epoch)
+                        mlflow.log_metric("val_recon_loss", avg_recon_loss, step=epoch)
+                        mlflow.log_metric("val_kl_loss", avg_kl_loss, step=epoch)
 
                         # Log reconstructions and samples
-                        self._log_reconstructions(X, recon, epoch)
-                        self._log_samples(n_samples=8, seq_len=X.shape[-1], epoch=epoch)
-
+                        self._log_reconstructions(X, recon, epoch, max_items=5)
+                        self._log_samples(n_samples=10, seq_len=X.shape[-1], epoch=epoch)
+                        if early_stoping_criteria == "loss":
+                            monitor_value = avg_val_loss
+                        elif early_stoping_criteria == "recon_loss":
+                            monitor_value = avg_recon_loss
+                        elif early_stoping_criteria == "kl_loss":
+                            monitor_value = avg_kl_loss
+                        else:
+                            print("Warning: Unknown early stopping criteria. Defaulting to 'loss'.")
+                            monitor_value = avg_val_loss
                         # Save best model
-                        if avg_val_loss < best_val_loss:
-                            best_val_loss = avg_val_loss
+                        if monitor_value < best_val_loss:
+                            best_val_loss = monitor_value
                             patience = early_stopping
                             torch.save(self.model.state_dict(), "../models/best_vae.pt")
                         else:
