@@ -309,7 +309,7 @@ class NFTrainer:
             return history
 
 
-def load_nf(model_class, checkpoint_path, device="cpu", **model_kwargs):
+def load_nf(model_class, checkpoint_path, device="cpu", **model_kwargs) -> NormalizingFlow:
     """
     Load NF model weights from a checkpoint.
 

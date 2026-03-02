@@ -6,7 +6,7 @@ device = "cuda" if is_available() else "cpu"
 
 model = load_gan(Generator1D, "models\\dcgan_G.pt", device, z_dim=16, signal_length=128)
 
-def sample(model:Generator1D, device, num_samples:int, batch_size: int = 1024): 
+def sample_by_batch_gan(device, num_samples:int, batch_size: int = 1024): 
     
     num_batches = num_samples // batch_size 
     remaining = num_samples % batch_size 
@@ -19,7 +19,9 @@ def sample(model:Generator1D, device, num_samples:int, batch_size: int = 1024):
         
     return samples 
 
-synth_samples = sample(model, device, 67477 ) # number of training instances in training set
 
-# Save the tensor to a file 
-save(synth_samples.cpu(), 'data\generated\synth_gan.pt')
+if __name__ == "__main__":
+    # number of training instances in training set
+    synth_samples = sample_by_batch_gan(model, device, 67477 ) 
+    # Save the tensor to a file 
+    save(synth_samples.cpu(), 'data\generated\synth_gan.pt')

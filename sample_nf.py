@@ -7,7 +7,7 @@ device = "cuda" if is_available() else "cpu"
 
 model = load_nf(NormalizingFlow, "models\\best_nf.pt", device, num_layers = 16, dim = 128, hidden_dim = 256)
 
-def sample(model:NormalizingFlow, device, num_samples:int, batch_size: int = 1024): 
+def sample_by_batch_nf(device, num_samples:int, batch_size: int = 1024): 
     
     num_batches = num_samples // batch_size 
     remaining = num_samples % batch_size 
@@ -20,7 +20,7 @@ def sample(model:NormalizingFlow, device, num_samples:int, batch_size: int = 102
         
     return samples 
 
-synth_samples = sample(model, device, 67477 ) 
-
-# Save the tensor to a file named 'my_tensor.pt'
-save(synth_samples.cpu(), 'data\generated\synth_nf.pt')
+if __name__ == "__main__":
+    synth_samples = sample_by_batch_nf(model, device, 67477 ) 
+    # Save the tensor to a file named 'my_tensor.pt'
+    save(synth_samples.cpu(), 'data\generated\synth_nf.pt')

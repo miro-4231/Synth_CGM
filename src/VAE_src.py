@@ -422,7 +422,7 @@ def loss_wrapper(y_pred, y):
     return vae_loss(recon, y, mu, log_var)
 
 
-def load_vae(model_class, checkpoint_path, device="cpu", **model_kwargs):
+def load_vae(model_class, checkpoint_path, device="cpu", **model_kwargs) -> VAE:
     """
     Load VAE model weights from a checkpoint.
 

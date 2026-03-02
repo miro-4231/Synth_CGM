@@ -289,7 +289,7 @@ class DCGANTrainer:
             mlflow.log_artifact("../models/dcgan_D.pt")
 
             return history  
-def load_gan(model_class, checkpoint_path, device="cpu", **model_kwargs):
+def load_gan(model_class, checkpoint_path, device="cpu", **model_kwargs) -> Generator1D:
     """
     Load GAN model weights from a checkpoint.
 

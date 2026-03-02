@@ -15,7 +15,7 @@ model = load_ddpm(Unet, "models\\best_ddpm.pt", device,
     channels=1,
     dim_mults=(1, 2, 4, 8,),)
 
-def sample_by_batch(model:Unet, device, num_samples:int, batch_size: int = 1024, seq_len:int = 128, channels:int = 1): 
+def sample_by_batch_ddpm(device, num_samples:int, batch_size: int = 1024, seq_len:int = 128, channels:int = 1): 
     
     num_batches = num_samples // batch_size 
     remaining = num_samples % batch_size 
@@ -28,7 +28,9 @@ def sample_by_batch(model:Unet, device, num_samples:int, batch_size: int = 1024,
     samples = function_reverse(samples)    
     return samples 
 
-synth_samples = sample_by_batch(model, device, 67477 ) 
 
-# Save the tensor to a file named 'my_tensor.pt'
-save(synth_samples.cpu(), 'data\generated\synth_ddpm.pt')
+
+if __name__ == "__main__":
+    synth_samples = sample_by_batch_ddpm(model, device, 67477 ) 
+    # Save the tensor to a file named 'my_tensor.pt'
+    save(synth_samples.cpu(), 'data\generated\synth_ddpm.pt')
