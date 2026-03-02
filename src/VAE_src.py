@@ -138,7 +138,7 @@ class VAE(nn.Module):
         
         std = torch.exp(0.5 * log_var) 
         
-        eps = torch.rand_like(mu) 
+        eps = torch.randn_like(mu) 
         
         return mu + eps * std 
     
