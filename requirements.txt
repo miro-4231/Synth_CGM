@@ -1,0 +1,25 @@
+# Deep learning
+torch==2.10.0+cu126
+
+# Data & scientific
+numpy==2.3.5
+pandas==2.3.3
+scikit-learn==1.8.0
+scipy==1.17.0
+
+# Visualization
+matplotlib==3.10.8
+
+# Experiment tracking
+mlflow==3.8.1
+
+# Utilities
+tqdm==4.67.2
+
+# API
+fastapi==0.128.0
+uvicorn==0.40.0
+
+# Testing
+httpx==0.28.1
+starlette==0.50.0

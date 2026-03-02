@@ -250,7 +250,7 @@ class VAETrainer:
 
         with autocast(device_type='cuda', dtype=torch.float16):
             recon, mu, log_var = self.model(X)
-            loss, recon_loss, kl = vae_loss(recon, X, mu, log_var, self.beta)
+            loss, recon_loss, kl = vae_loss(X, recon, mu, log_var, self.beta)
 
         if train:
             if self.fp16:
