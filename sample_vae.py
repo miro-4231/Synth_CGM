@@ -4,7 +4,7 @@ from torch import concat, save
 
 device = "cuda" if is_available() else "cpu"
 
-model:VAE = load_vae(VAE, "models\\best_vaes.pt", device, input_shape=(1, 128), latent_dim=24,)
+model:VAE = load_vae(VAE, "models\\best_vae.pt", device, input_shape=(1, 128), latent_dim=24,)
 
 def sample_by_batch_vae(device, num_samples:int, batch_size: int = 1024): 
     
@@ -21,7 +21,6 @@ def sample_by_batch_vae(device, num_samples:int, batch_size: int = 1024):
 
 if __name__ == "__main__":
     synth_samples = sample_by_batch_vae(model, device, 67477 ) 
-    print(" mean:", synth_samples.mean().item(), " std:", synth_samples.std().item())
     # Save the tensor to a file named 'my_tensor.pt'
     save(synth_samples.cpu(), 'data\generated\synth_vaes.pt')
     

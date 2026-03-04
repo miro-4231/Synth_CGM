@@ -21,7 +21,6 @@ def sample_by_batch_ddpm(device, num_samples:int, batch_size: int = 1024, seq_le
     remaining = num_samples % batch_size 
     
     samples = sample(model, 128, remaining, 1)[-1] 
-    print(samples.shape)
     for _ in tqdm(range(num_batches)): 
         
         samples = concat([samples, sample(model, seq_len, batch_size, channels)[-1] ]) 

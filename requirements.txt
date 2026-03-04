@@ -1,5 +1,6 @@
 # Deep learning
 torch==2.10.0+cu126
+einops==0.8.1
 
 # Data & scientific
 numpy==2.3.5
