@@ -1,3 +1,4 @@
 mlartifacts/*
 mlruns/*
 __pycache__
+.vscode/

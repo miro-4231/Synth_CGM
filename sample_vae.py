@@ -27,12 +27,12 @@ def sample_by_batch_vae(device, num_samples:int, batch_size: int = 1024):
 def sample_adverse_vae(device, num_samples:int, batch_size: int = 1024): 
 
     
-    samples = model.sample( batch_size, 128, device)
-    samples = samples[(samples[:, -PH:] < HypoTreshold).any(dim=1)]
+    samples = model.sample( batch_size,device)
+    samples = samples[(samples[:,:, -PH:] < HypoTreshold).any(dim=2)]
     
     while len(samples) < num_samples:
-        new_samples = model.sample(batch_size, 128, device)
-        new_samples = new_samples[(new_samples[:, -PH:] < HypoTreshold).any(dim=1)]
+        new_samples = model.sample(batch_size, device)
+        new_samples = new_samples[(new_samples[:,:, -PH:] < HypoTreshold).any(dim=2)]
         samples = concat([samples, new_samples])
 
     return samples
@@ -41,9 +41,9 @@ if __name__ == "__main__":
     if AdverseEventOnly:
         synth_samples = sample_adverse_vae(device, 5000 )
 
-        save(synth_samples.cpu(), 'data\generated\synthAug_vaes.pt')
+        save(synth_samples.cpu(), 'data\generated\synthAug_vae.pt')
     else:
-        synth_samples = sample_by_batch_vae(model, device, 67477 ) 
+        synth_samples = sample_by_batch_vae(device, 67477 ) 
 
-        save(synth_samples.cpu(), 'data\generated\synth_vaes.pt')
+        save(synth_samples.cpu(), 'data\generated\synth_vae.pt')
     
