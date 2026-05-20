@@ -1,12 +1,20 @@
 from src.DDPM_src import Unet, load_ddpm, sample
 from torch.cuda import is_available
-from torch import concat, save
+from torch import concat, save, where
 from tqdm import tqdm
 
 device = "cuda" if is_available() else "cpu"
 
 MIN = 40
 MAX = 400 
+
+PH:int = 8
+
+HypoTreshold:int = 70
+HypoTreshold = (HypoTreshold - MIN) / (MAX - MIN) * 2 - 1
+
+AdverseEventOnly:bool = True
+
 
 function_reverse = lambda t: (t / 2 + 0.5) * (MAX - MIN) + MIN
 
@@ -27,9 +35,27 @@ def sample_by_batch_ddpm(device, num_samples:int, batch_size: int = 1024, seq_le
     samples = function_reverse(samples)    
     return samples 
 
+def sample_adverse_ddpm(device, num_samples:int, batch_size: int = 1024, seq_len:int = 128, channels:int = 1): 
+
+    
+    samples = sample(model, 128, batch_size, 1)[-1] 
+    samples = samples[(samples[:,:, -PH:] < HypoTreshold).any(dim=2)]
+    
+    while len(samples) < num_samples:
+        new_samples = sample(model, seq_len, batch_size, channels)[-1] 
+        new_samples = new_samples[(new_samples[:,:, -PH:] < HypoTreshold).any(dim=2)]
+        samples = concat([samples, new_samples])
+    samples = function_reverse(samples)    
+    return samples
+
 
 
 if __name__ == "__main__":
-    synth_samples = sample_by_batch_ddpm(model, device, 67477 ) 
-    # Save the tensor to a file named 'my_tensor.pt'
-    save(synth_samples.cpu(), 'data\generated\synth_ddpm.pt')
+    if AdverseEventOnly:
+        synth_samples = sample_adverse_ddpm(device, 5000 )
+        # Save the tensor to a file named 'my_tensor.pt'
+        save(synth_samples.cpu(), 'data\generated\synthAug_ddpm.pt')
+    else:
+        synth_samples = sample_by_batch_ddpm(device, 67477 ) 
+        # Save the tensor to a file named 'my_tensor.pt'
+        save(synth_samples.cpu(), 'data\generated\synth_ddpm.pt')

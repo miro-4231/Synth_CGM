@@ -3,6 +3,11 @@ from torch.cuda import is_available
 from torch import concat, save
 from tqdm import tqdm
 
+PH = 8
+
+HypoTreshold:int = 70
+AdverseEventOnly:bool = True
+
 device = "cuda" if is_available() else "cpu"
 
 model = load_nf(NormalizingFlow, "models\\best_nf.pt", device, num_layers = 16, dim = 128, hidden_dim = 256)
@@ -20,7 +25,25 @@ def sample_by_batch_nf(device, num_samples:int, batch_size: int = 1024):
         
     return samples 
 
+def sample_adverse_nf(device, num_samples:int, batch_size: int = 1024): 
+
+    
+    samples = model.sample( batch_size, 128, device)
+    samples = samples[(samples[:, -PH:] < HypoTreshold).any(dim=1)]
+    
+    while len(samples) < num_samples:
+        new_samples = model.sample(batch_size, 128, device)
+        new_samples = new_samples[(new_samples[:, -PH:] < HypoTreshold).any(dim=1)]
+        samples = concat([samples, new_samples])
+
+    return samples
+
 if __name__ == "__main__":
-    synth_samples = sample_by_batch_nf(model, device, 67477 ) 
-    # Save the tensor to a file named 'my_tensor.pt'
-    save(synth_samples.cpu(), 'data\generated\synth_nf.pt')
+    if AdverseEventOnly:
+        synth_samples = sample_adverse_nf(device, 5000 )
+
+        save(synth_samples.cpu(), 'data\generated\synthAug_nf.pt')
+    else:
+        synth_samples = sample_by_batch_nf(device, 67477 ) 
+        # Save the tensor to a file named 'my_tensor.pt'
+        save(synth_samples.cpu(), 'data\generated\synth_nf.pt')
